@@ -20,9 +20,9 @@
  * ================================================================ */
 
 #if defined(_WIN32)
-  #define BRIDGE_API __declspec(dllexport)
+#define BRIDGE_API __declspec(dllexport)
 #else
-  #define BRIDGE_API __attribute__((visibility("default")))
+#define BRIDGE_API __attribute__((visibility("default")))
 #endif
 
 /* ================================================================
@@ -102,11 +102,12 @@ BRIDGE_API int curl_unity_getinfo_long(CURL *handle, int info, int64_t *value)
 {
     long tmp = 0;
     int ret = (int)curl_easy_getinfo(handle, (CURLINFO)info, &tmp);
-    if (value) *value = (int64_t)tmp;
+    if (value)
+        *value = (int64_t)tmp;
     return ret;
 }
 
-BRIDGE_API int curl_unity_getinfo_string(CURL *handle, int info, const char **value)
+BRIDGE_API int curl_unity_getinfo_ptr(CURL *handle, int info, const void **value)
 {
     return (int)curl_easy_getinfo(handle, (CURLINFO)info, value);
 }

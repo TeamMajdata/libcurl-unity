@@ -51,7 +51,7 @@ EXPORTS
     curl_unity_setopt_prereq_function
     curl_unity_setopt_prereq_data
     curl_unity_getinfo_long
-    curl_unity_getinfo_string
+    curl_unity_getinfo_ptr
     curl_unity_getinfo_double
     curl_unity_getinfo_off_t
     curl_unity_multi_setopt_long

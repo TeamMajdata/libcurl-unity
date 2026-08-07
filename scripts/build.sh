@@ -561,7 +561,7 @@ _collect_macos() {
 
   # bridge.c + 所有静态库 → 单个 dylib
   cc -arch "$arch" -mmacosx-version-min="$MACOS_MIN_VERSION" \
-    -shared -o "$out/libcurl_unity.dylib" \
+    -shared -o "$out/libcurl.dylib" \
     -I"$PREFIX/include" \
     "$BRIDGE_SRC" \
     -Wl,-force_load,$PREFIX/lib/libcurl.a \
@@ -571,9 +571,9 @@ _collect_macos() {
     -framework CoreServices \
     -framework Security \
     -lz \
-    -install_name @rpath/libcurl_unity.dylib
+    -install_name @rpath/libcurl.dylib
 
-  echo "  -> $out/libcurl_unity.dylib"
+  echo "  -> $out/libcurl.dylib"
 }
 
 _collect_ios() {
@@ -593,11 +593,11 @@ _collect_ios() {
     "$BRIDGE_SRC"
 
   # 合并所有静态库 + bridge.o
-  libtool -static -o "$out/libcurl_unity.a" \
+  libtool -static -o "$out/libcurl.a" \
     "$PREFIX/lib/curl_unity_bridge.o" \
     $(_all_static_libs)
 
-  echo "  -> $out/libcurl_unity.a"
+  echo "  -> $out/libcurl.a"
 
   # 复制头文件
   rm -rf "$out/include"
@@ -621,7 +621,7 @@ _collect_android() {
 
   # 2. 链接所有文件，强制严格的 16KB 对齐
   # 增加 common-page-size 以防止旧版 NDK 工具链引发默认对齐回退
-  "$clang" -shared -fPIC -o "$out/libcurl_unity.so" \
+  "$clang" -shared -fPIC -o "$out/libcurl.so" \
     "$out/bridge.o" \
     -Wl,-z,max-page-size=16384 \
     -Wl,-z,common-page-size=16384 \
@@ -638,10 +638,10 @@ _collect_android() {
     local align
     while read -r align; do
       if (( align < 16384 )); then
-        echo "错误: libcurl_unity.so 存在 LOAD 段对齐 $align < 16KB" >&2
+        echo "错误: libcurl.so 存在 LOAD 段对齐 $align < 16KB" >&2
         exit 1
       fi
-    done < <("$readelf_bin" -l "$out/libcurl_unity.so" | awk '$1 == "LOAD" { print $NF }')
+    done < <("$readelf_bin" -l "$out/libcurl.so" | awk '$1 == "LOAD" { print $NF }')
     echo "  (LOAD 段 16KB 对齐校验通过)"
   fi
 
@@ -649,11 +649,11 @@ _collect_android() {
   # 交给 Unity 引擎在 Build 阶段去自动 Strip，防止破坏对齐结构。
   # local strip_bin="$toolchain_bin/llvm-strip"
   # if [[ -x "$strip_bin" ]]; then
-  #   "$strip_bin" --strip-debug "$out/libcurl_unity.so"
+  #   "$strip_bin" --strip-debug "$out/libcurl.so"
   #   echo "  (已 strip 调试符号)"
   # fi
 
-  echo "  -> $out/libcurl_unity.so"
+  echo "  -> $out/libcurl.so"
 }
 
 # ============================================================

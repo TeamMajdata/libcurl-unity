@@ -13,6 +13,7 @@
 #   android-arm64        Android arm64-v8a
 #   android-armv7        Android armeabi-v7a
 #   android-x86_64       Android x86_64
+#   linux-x86_64         Linux x86_64（原生构建）
 #
 # 选项:
 #   --clean              清理该平台的 build 目录后重新编译
@@ -161,9 +162,13 @@ configure_platform() {
         -DANDROID_PLATFORM="android-$ANDROID_MIN_API"
       )
       ;;
+    linux-x86_64)
+      # 原生构建：使用系统编译器，OpenSSL 自带 linux-x86_64 目标
+      OPENSSL_TARGET="linux-x86_64"
+      ;;
     *)
       echo "错误: 不支持的平台 '$PLATFORM'" >&2
-      echo "支持的平台: macos-arm64 macos-x86_64 ios-arm64 ios-sim-arm64 android-arm64 android-armv7 android-x86_64" >&2
+      echo "支持的平台: macos-arm64 macos-x86_64 ios-arm64 ios-sim-arm64 android-arm64 android-armv7 android-x86_64 linux-x86_64" >&2
       exit 1
       ;;
   esac
@@ -546,6 +551,9 @@ collect_output() {
     android-x86_64)
       _collect_android "$OUTPUT_DIR/Android/x86_64" x86_64-linux-android
       ;;
+    linux-x86_64)
+      _collect_linux "$OUTPUT_DIR/Linux/x86_64"
+      ;;
   esac
 }
 
@@ -625,6 +633,8 @@ _collect_android() {
     "$out/bridge.o" \
     -Wl,-z,max-page-size=16384 \
     -Wl,-z,common-page-size=16384 \
+    -Wl,-Bsymbolic-functions \
+    -Wl,--version-script="$PROJECT_ROOT/bridge/exports.map" \
     -Wl,--whole-archive "$PREFIX/lib/libcurl.a" -Wl,--no-whole-archive \
     $(_all_static_libs | sed "s|$PREFIX/lib/libcurl.a||") \
     -lz
@@ -645,6 +655,9 @@ _collect_android() {
     echo "  (LOAD 段 16KB 对齐校验通过)"
   fi
 
+  # 4. 导出符号校验
+  _verify_no_dependency_symbols "$out/libcurl.so"
+
   # 【关键修改】：彻底注释/删除 strip 步骤！
   # 交给 Unity 引擎在 Build 阶段去自动 Strip，防止破坏对齐结构。
   # local strip_bin="$toolchain_bin/llvm-strip"
@@ -654,6 +667,57 @@ _collect_android() {
   # fi
 
   echo "  -> $out/libcurl.so"
+}
+
+_collect_linux() {
+  local out="$1"
+  mkdir -p "$out"
+
+  # 1. bridge.c → bridge.o
+  cc -O2 -fPIC -c \
+    -I"$PREFIX/include" \
+    "$BRIDGE_SRC" \
+    -o "$out/bridge.o"
+
+  # 2. bridge.o + 所有静态库 → 单个 libcurl.so
+  # 与 Windows 的 bridge/exports.def 等价，ELF 侧用 version script 表达：
+  # 只导出 P/Invoke 入口，静态链入的 OpenSSL/nghttp2/ngtcp2 保持 local，
+  # 避免它们参与进程级符号解析后被进程内其它 OpenSSL 副本抢注。
+  cc -shared -fPIC -o "$out/libcurl.so" \
+    "$out/bridge.o" \
+    -Wl,-Bsymbolic-functions \
+    -Wl,--version-script="$PROJECT_ROOT/bridge/exports.map" \
+    -Wl,--whole-archive "$PREFIX/lib/libcurl.a" -Wl,--no-whole-archive \
+    $(_all_static_libs | sed "s|$PREFIX/lib/libcurl.a||") \
+    -lz
+
+  # 清理临时对象
+  rm -f "$out/bridge.o"
+
+  # 3. 导出符号校验
+  _verify_no_dependency_symbols "$out/libcurl.so"
+
+  echo "  -> $out/libcurl.so"
+}
+
+# 校验动态库没有把依赖库（OpenSSL / nghttp2 / nghttp3 / ngtcp2）的符号导出出去。
+# 这些符号一旦对外可见，就会参与 ELF 的进程级符号解析。进程里若还有另一份
+# OpenSSL（例如 BASS 运行时 dlopen 的 libssl.so.3），两者会互相抢注，让 curl
+# 用 A 版本的函数去操作 B 版本创建的对象，最终在 TLS 握手时崩溃。
+# 用法: _verify_no_dependency_symbols <动态库路径>
+_verify_no_dependency_symbols() {
+  local lib="$1"
+  if ! command -v readelf > /dev/null 2>&1; then
+    echo "  警告: 未找到 readelf，跳过导出符号校验" >&2
+    return
+  fi
+  local leaked
+  leaked="$(readelf --dyn-syms --wide "$lib" | grep -cE ' (SSL_|OPENSSL_|OSSL_|CRYPTO_|EVP_|X509_|BIO_|nghttp2_|nghttp3_|ngtcp2_)' || true)"
+  if [[ "$leaked" != "0" ]]; then
+    echo "错误: $(basename "$lib") 仍导出 $leaked 个依赖库符号，符号隐藏未生效" >&2
+    exit 1
+  fi
+  echo "  (依赖库符号已隐藏，仅导出 P/Invoke 入口)"
 }
 
 # ============================================================

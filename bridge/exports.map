@@ -1,0 +1,78 @@
+/*
+ * libcurl_unity ELF export map (Linux / Android).
+ *
+ * The Windows build constrains its exports through bridge/exports.def, because a
+ * DLL only exports __declspec(dllexport) symbols. ELF has no such default: every
+ * symbol the linker pulls out of the bundled static libraries (libssl.a,
+ * libcrypto.a, nghttp2, nghttp3, ngtcp2, zlib) ends up in the dynamic symbol
+ * table with default visibility.
+ *
+ * Those OpenSSL symbols then take part in ELF's process-wide symbol resolution.
+ * If any other component in the process dlopen()s a second OpenSSL (for example
+ * BASS, which loads libssl.so.* to support https streams), the two copies
+ * hijack each other: calls made inside this library can bind to that other
+ * OpenSSL, and vice versa. Mixing two different OpenSSL versions corrupts
+ * SSL_CTX/SSL_SESSION and crashes inside the TLS handshake.
+ *
+ * Keeping everything except the P/Invoke surface local fixes both directions.
+ *
+ * Keep this list in sync with bridge/exports.def and with the P/Invoke
+ * declarations the managed side uses.
+ */
+{
+  global:
+    /* curl core — non-variadic, called directly via P/Invoke */
+    curl_global_init;
+    curl_global_cleanup;
+    curl_easy_init;
+    curl_easy_setopt;
+    curl_easy_cleanup;
+    curl_easy_perform;
+    curl_easy_strerror;
+    curl_easy_reset;
+    curl_easy_pause;
+    curl_multi_strerror;
+    curl_version;
+    curl_version_info;
+    curl_slist_append;
+    curl_slist_free_all;
+    curl_free;
+    curl_multi_init;
+    curl_multi_setopt;
+    curl_multi_cleanup;
+    curl_multi_add_handle;
+    curl_multi_remove_handle;
+    curl_multi_perform;
+    curl_multi_poll;
+    curl_multi_wakeup;
+    curl_multi_info_read;
+    curl_share_init;
+    curl_share_cleanup;
+    curl_share_strerror;
+
+    /* bridge — variadic wrappers */
+    curl_unity_setopt_string;
+    curl_unity_setopt_long;
+    curl_unity_setopt_ptr;
+    curl_unity_setopt_off_t;
+    curl_unity_setopt_write_function;
+    curl_unity_setopt_write_data;
+    curl_unity_setopt_header_function;
+    curl_unity_setopt_header_data;
+    curl_unity_setopt_read_function;
+    curl_unity_setopt_read_data;
+    curl_unity_setopt_prereq_function;
+    curl_unity_setopt_prereq_data;
+    curl_unity_getinfo_long;
+    curl_unity_getinfo_ptr;
+    curl_unity_getinfo_double;
+    curl_unity_getinfo_off_t;
+    curl_unity_multi_setopt_long;
+    curl_unity_multi_setopt_ptr;
+    curl_unity_multi_info_read;
+    curl_unity_share_setopt_long;
+    curl_unity_share_setopt_ptr;
+
+  local:
+    *;
+};
